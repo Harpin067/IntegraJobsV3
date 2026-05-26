@@ -18,7 +18,9 @@ services:
       retries: 5
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: portal_api
     restart: unless-stopped
     depends_on:
@@ -30,13 +32,7 @@ services:
       DATABASE_URL: postgresql://portal:portal_secret@db:5432/portal_db
       JWT_SECRET: change_this_in_production
       PORT: 3000
-      NODE_ENV: development # Entorno de desarrollo para ver errores detallados
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
-    # La migración y el seed se ejecutan DESDE EL HOST con Prisma.
-    # Ver DEPLOY.md (Paso 4). Aquí solo se levanta el servidor.
-    command: npm run dev
+      NODE_ENV: production
 
 volumes:
   postgres_data:

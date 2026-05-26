@@ -1,385 +1,630 @@
-  # ARCHITECTURE_SPEC.md — IntegraJobs
+# ARCHITECTURE_SPEC.md — IntegraJobs
 
-  > **Versión:** 2.0.0 | **Fecha:** 2026-04-20
-  > **Autor:** Arquitectura de Software / Tech Lead
-  > **Estado:** Especificación vigente — refleja el código real en `main`
+> **Versión:** 3.0.0 | **Fecha:** 2026-05-17
+> **Autor:** Arquitectura de Software / Full-Stack Lead
+> **Estado:** Especificación vigente — única fuente de verdad arquitectónica para el equipo
 
-  ---
+---
 
-  ## 0. Cambios respecto a la v1.0.0
+## 0. Cambios respecto a la v2.0.0
 
-  La v1.0.0 describía un stack **Next.js 14 + App Router + NextAuth + Zustand** que nunca se implementó. El proyecto se ejecutó con un stack distinto, más pragmático y con menor superficie de mantenimiento. Este documento reemplaza por completo la v1.0.0 y es la única fuente de verdad arquitectónica.
+La v2.0.0 describía un frontend en **HTML Vanilla + JS modular (ES Modules)** servido directamente por Express. La v3.0.0 inicia la migración del frontend a **Vite + React 18 (SPA)** usando el patrón **Strangler Fig**: el frontend React reemplaza progresivamente las vistas actuales, módulo a módulo, sin interrumpir el funcionamiento del sistema.
 
-  ---
+**Lo que no cambia:** el backend Node.js/Express 5, PostgreSQL, la capa de autenticación JWT, los contratos de API, y la estructura de `backend/` y `prisma/`. El backend no es objeto de esta fase.
 
-  ## 1. Stack Tecnológico
+---
 
-  | Capa | Tecnología | Justificación |
-  |---|---|---|
-  | **Servidor HTTP** | Node.js 20 LTS + Express 5 | Express 5 soporta routing asíncrono nativo (los errores en `async` llegan a `next()` sin wrappers). Estable, conocido por todo el equipo, cero curva de aprendizaje. |
-  | **Frontend** | HTML Vanilla + JS modular (ES Modules) | Sin framework pesado: tiempos de carga mínimos, deploy sencillo (el propio Express sirve los estáticos). Alinea con nuestro público objetivo en redes móviles de El Salvador. |
-  | **Estilos** | CSS puro con variables (`theme.css`) | Sin pipeline de build. Tokens de color expuestos como `:root { --color-* }` para consistencia entre páginas. |
-  | **Esquema de datos** | Prisma 5 (solo schema + seed) | Declarativo, `prisma db push` sincroniza cambios sin migraciones manuales en desarrollo. Tipado de enums gratuito. |
-  | **Acceso a BD (runtime)** | `pg` (Pool) con SQL parametrizado | El backend **no** usa Prisma Client en caliente. Se optó por `pg` directo porque las queries son mayoritariamente agregaciones y reportes donde SQL explícito es más claro y performante que un query builder. |
-  | **Base de Datos** | PostgreSQL 16 (Docker) | Relacional robusto. Enums nativos alineados con `schema.prisma`. Expuesto en `localhost:5434` al host, `db:5432` en la red interna de Compose. |
-  | **Autenticación** | JWT manual (`jsonwebtoken`) + `bcryptjs` | Sin NextAuth: stateless, portable, sin dependencia de frontend React. Middleware propio (`requireAuth`, `requireRole`) aplica políticas por rol. |
-  | **Validación** | `express-validator` | Validación declarativa por ruta. Los errores los transforma el middleware `validate` en respuestas 422 uniformes. |
-  | **Contenedorización** | Docker + Docker Compose | Un `docker compose up db` y el entorno está listo. El backend puede correr en host o en contenedor según preferencia del desarrollador. |
-  | **Testing** | Jest + Supertest | Tests de integración por módulo (`auth.test.js`, `vacantes.test.js`, etc.). |
-  | **Tipografía** | Inter (Google Fonts) | Importada vía `<link>` directo en los HTML. |
+## 1. Stack Tecnológico
 
-  ### 1.1 Paleta UX (Variables CSS Globales)
+### 1.1 Backend (sin cambios respecto a v2.0.0)
 
-  Definidas en `frontend/css/theme.css` y reutilizadas por todas las páginas:
+| Capa | Tecnología |
+|---|---|
+| **Servidor HTTP** | Node.js 20 LTS + Express 5 |
+| **Esquema de datos** | Prisma 5 (schema + seed) |
+| **Acceso a BD (runtime)** | `pg` (Pool) con SQL parametrizado |
+| **Base de Datos** | PostgreSQL 16 (Docker) |
+| **Autenticación** | JWT manual (`jsonwebtoken`) + `bcryptjs` |
+| **Validación** | `express-validator` |
+| **Contenedorización** | Docker + Docker Compose |
+| **Testing** | Jest + Supertest |
 
-  ```css
-  :root {
-    --color-primary:    #1A56DB; /* Azul Corporativo — botones primarios, enlaces */
-    --color-secondary:  #10B981; /* Verde Éxito — "Aplicar", confirmaciones */
-    --color-background: #F9FAFB; /* Gris Claro — fondo general */
-    --color-text:       #111827; /* Gris Oscuro — texto principal */
-    --color-danger:     #EF4444; /* Rojo Suave — errores, destructivo */
+### 1.2 Frontend (v3.0.0 — nuevo)
+
+| Capa | Tecnología | Justificación |
+|---|---|---|
+| **Framework** | Vite + React 18 (SPA) | Build ultrarrápido con HMR, componentes reutilizables, gestión de estado declarativa. Reemplaza el HTML Vanilla progresivamente. |
+| **Estilos** | Tailwind CSS v3 | Utility-first. El `tailwind.config.js` consume las mismas variables CSS de `theme.css` (ver §1.3) para garantizar paridad visual durante la transición. |
+| **Routing** | React Router v6 | Routing declarativo en cliente con rutas anidadas y protección por rol. |
+| **Estado global** | React Context + custom hooks (`useAuth`) | Suficiente para el alcance del sistema. Sin dependencias externas de estado. |
+| **HTTP** | Cliente centralizado (`src/api/client.js`) | Intercepta todas las peticiones e inyecta el JWT en `Authorization: Bearer` automáticamente. |
+| **Tipografía** | Inter (Google Fonts) | Heredada de la v2.0.0, importada una sola vez en `index.html`. |
+
+### 1.3 Paleta UX — Variables CSS Globales (continuidad de `theme.css`)
+
+Definidas originalmente en `frontend/css/theme.css`. Durante la migración, estas variables se preservan **sin modificar** en `theme.css` y se referencian explícitamente en `tailwind.config.js` del proyecto React para garantizar que ambos frontends compartan exactamente los mismos tokens visuales.
+
+```css
+/* frontend/css/theme.css — fuente original, no modificar */
+:root {
+  --color-primary:    #1A56DB; /* Azul Corporativo — botones primarios, enlaces */
+  --color-secondary:  #10B981; /* Verde Éxito — "Aplicar", confirmaciones */
+  --color-background: #F9FAFB; /* Gris Claro — fondo general */
+  --color-text:       #111827; /* Gris Oscuro — texto principal */
+  --color-danger:     #EF4444; /* Rojo Suave — errores, destructivo */
+}
+```
+
+```js
+// frontend-react/tailwind.config.js
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  theme: {
+    extend: {
+      colors: {
+        primary:    'var(--color-primary)',
+        secondary:  'var(--color-secondary)',
+        background: 'var(--color-background)',
+        text:       'var(--color-text)',
+        danger:     'var(--color-danger)',
+      },
+    },
+  },
+};
+```
+
+Esto garantiza que `bg-primary`, `text-secondary`, etc., en Tailwind resuelven exactamente al mismo color que las páginas Vanilla durante la coexistencia de ambos frontends.
+
+### 1.4 Principios de diseño (v3.0.0)
+
+1. **El backend es inmutable en esta fase.** Cero cambios a rutas, servicios o esquema de base de datos. La API REST es el contrato estable que conecta ambos mundos.
+2. **Paridad visual garantizada.** Los tokens de color de `theme.css` son la única fuente de verdad para el color. Tailwind los hereda; no se definen colores fuera de esas variables.
+3. **Strangler Fig progresivo.** El HTML Vanilla y el SPA React coexisten. Express enruta al cliente correcto según el módulo.
+4. **Ownership vertical por módulo.** Cada integrante migra su módulo de extremo a extremo: HTML → componentes React → hooks → pruebas visuales.
+5. **Stateless.** El servidor no guarda sesión. El JWT viaja en `Authorization: Bearer` desde `client.js`.
+
+---
+
+## 2. Estructura de Directorios
+
+```
+IntegraJobs/
+│
+├── prisma/                            # [CARLOS] Sin cambios
+│   ├── schema.prisma
+│   └── seed.ts
+│
+├── backend/                           # Sin cambios en esta fase
+│   ├── Dockerfile
+│   ├── package.json
+│   └── src/
+│       ├── server.js                  # [CARLOS]
+│       ├── app.js                     # [CARLOS] — ver §3.3 para enrutamiento de transición
+│       ├── config/
+│       │   └── env.js                 # [CARLOS]
+│       ├── db/
+│       │   └── db.js                  # [CARLOS]
+│       ├── middleware/
+│       │   ├── auth.middleware.js     # [BRIAN]
+│       │   └── validate.middleware.js # [CARLOS]
+│       ├── routes/
+│       │   ├── auth.routes.js         # [BRIAN]
+│       │   ├── public.routes.js       # [CARLOS]
+│       │   ├── vacantes.routes.js     # [WALTER]
+│       │   ├── candidato.routes.js    # [WILBER]
+│       │   ├── empresa.routes.js      # [WALTER]
+│       │   └── admin.routes.js        # [CARLOS]
+│       ├── controllers/
+│       │   ├── auth.controller.js     # [BRIAN]
+│       │   ├── vacantes.controller.js # [WALTER]
+│       │   ├── candidato.controller.js# [WILBER]
+│       │   ├── empresa.controller.js  # [WALTER]
+│       │   └── admin.controller.js    # [CARLOS]
+│       ├── services/
+│       │   ├── auth.service.js        # [BRIAN]
+│       │   ├── public.service.js      # [CARLOS]
+│       │   ├── vacantes.service.js    # [WALTER]
+│       │   ├── candidato.service.js   # [WILBER]
+│       │   ├── empresa.service.js     # [WALTER]
+│       │   └── admin.service.js       # [CARLOS]
+│       └── tests/
+│           ├── setup.js
+│           ├── helpers.js
+│           ├── auth.test.js           # [BRIAN]
+│           ├── vacantes.test.js       # [WALTER]
+│           ├── candidato.test.js      # [WILBER]
+│           ├── empresa.test.js        # [WALTER]
+│           ├── admin.test.js          # [CARLOS]
+│           └── public.test.js         # [CARLOS]
+│
+├── frontend/                          # ⚠ LEGADO — convive temporalmente durante la migración
+│   ├── index.html                     # [CARLOS]
+│   ├── busqueda.html                  # [WILBER]
+│   ├── vacante.html                   # [WILBER]
+│   ├── css/
+│   │   └── theme.css                  # [CARLOS] — fuente de tokens visuales, NO modificar
+│   ├── img/
+│   ├── js/
+│   │   ├── api.js                     # [CARLOS]
+│   │   ├── auth.js                    # [BRIAN]
+│   │   ├── shell.js                   # [CARLOS]
+│   │   ├── icons.js                   # [CARLOS]
+│   │   ├── helpers.js                 # [CARLOS]
+│   │   ├── index.js                   # [CARLOS]
+│   │   ├── busqueda.js                # [WILBER]
+│   │   ├── vacante.js                 # [WILBER]
+│   │   └── pages/
+│   └── pages/
+│       ├── login.html                 # [BRIAN]
+│       ├── registro*.html             # [BRIAN]
+│       ├── candidato/                 # [WILBER]
+│       ├── empresa/                   # [WALTER]
+│       └── admin/                     # [CARLOS]
+│
+├── frontend-react/                    # ✅ NUEVO — SPA React (v3.0.0)
+│   ├── index.html                     # Punto de entrada HTML de Vite
+│   ├── vite.config.js                 # [CARLOS]
+│   ├── tailwind.config.js             # [CARLOS] — consume variables de theme.css
+│   ├── postcss.config.js              # [CARLOS]
+│   ├── package.json
+│   └── src/
+│       ├── main.jsx                   # Monta <App /> en el DOM
+│       ├── App.jsx                    # [CARLOS] Router raíz + AuthProvider
+│       │
+│       ├── context/
+│       │   └── AuthContext.jsx        # [BRIAN]  useAuth() — gestión de sesión y JWT
+│       │
+│       ├── api/
+│       │   └── client.js              # [CARLOS] Cliente fetch centralizado con interceptor JWT
+│       │
+│       ├── hooks/                     # Custom hooks por dominio
+│       │   ├── useVacantes.js         # [WALTER]
+│       │   ├── useCandidato.js        # [WILBER]
+│       │   ├── useEmpresa.js          # [WALTER]
+│       │   └── useAdmin.js            # [CARLOS]
+│       │
+│       ├── components/
+│       │   ├── ui/                    # [CARLOS] Átomos: Button, Badge, Modal, Input, Spinner
+│       │   ├── layout/                # [CARLOS] Shell, Navbar, Sidebar, PrivateRoute
+│       │   └── shared/                # Componentes compartidos entre roles
+│       │       ├── VacanteCard.jsx    # [WALTER/WILBER]
+│       │       ├── ForoPost.jsx       # [WILBER]
+│       │       └── AlertaBanner.jsx   # [WILBER]
+│       │
+│       └── pages/
+│           ├── public/                # [CARLOS] Landing, Login, Registro, Búsqueda, Vacante
+│           │   ├── HomePage.jsx
+│           │   ├── LoginPage.jsx
+│           │   ├── RegistroCandidatoPage.jsx
+│           │   ├── RegistroEmpresaPage.jsx
+│           │   ├── BusquedaPage.jsx
+│           │   └── VacantePage.jsx
+│           │
+│           ├── candidato/             # [WILBER]
+│           │   ├── DashboardPage.jsx
+│           │   ├── PerfilPage.jsx
+│           │   ├── BusquedaPage.jsx
+│           │   ├── VacantePage.jsx
+│           │   ├── AlertasPage.jsx
+│           │   ├── ForosPage.jsx
+│           │   └── ValoracionesPage.jsx
+│           │
+│           ├── empresa/               # [WALTER]
+│           │   ├── DashboardPage.jsx
+│           │   ├── VacantesPage.jsx
+│           │   ├── CrearVacantePage.jsx
+│           │   ├── AplicacionesPage.jsx
+│           │   └── PerfilPage.jsx
+│           │
+│           └── admin/                 # [CARLOS]
+│               ├── DashboardPage.jsx
+│               ├── UsuariosPage.jsx
+│               ├── EmpresasPage.jsx
+│               ├── VacantesPage.jsx
+│               ├── ForosPage.jsx
+│               ├── RecursosPage.jsx
+│               └── ValoracionesPage.jsx
+│
+├── docker-compose.yml                 # [CARLOS]
+├── .env.example                       # [CARLOS]
+├── DEPLOY.md                          # [CARLOS]
+└── ARCHITECTURE_SPEC.md               # [CARLOS] (este archivo)
+```
+
+---
+
+## 3. Arquitectura Lógica
+
+### 3.1 Diagrama general (estado de transición)
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│              Navegador                                             │
+│                                                                    │
+│  [React SPA]  src/api/client.js ──▶ fetch("/api/...", Bearer JWT) │
+│       ▲                                                            │
+│       │  (módulos migrados)                                        │
+│  [HTML Vanilla]  js/api.js     ──▶ fetch("/api/...", Bearer JWT)  │
+│       ▲                                                            │
+│       │  (módulos pendientes de migración)                         │
+└───────┼────────────────────────────────────────────────────────────┘
+        │ HTTP
+        ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                     Express 5 (backend/src/app.js)                 │
+│                                                                    │
+│  express.static("frontend-react/dist/")  ← módulos migrados       │
+│  express.static("frontend/")             ← módulos legados        │
+│                                                                    │
+│  /api/public    → public.routes  → public.service                  │
+│  /api/auth      → auth.routes    → auth.controller → service       │
+│  /api/vacantes  → vacantes.*     (requireAuth + EMPRESA)           │
+│  /api/candidato → candidato.*    (requireAuth + CANDIDATO)         │
+│  /api/empresa   → empresa.*      (requireAuth + EMPRESA)           │
+│  /api/admin     → admin.*        (requireAuth + SUPERADMIN)        │
+│  404 handler /api                                                  │
+│  error handler global (statusCode → JSON uniforme)                 │
+└────────────────────────────────────────────────────────────────────┘
+        │ pg.Pool (SQL parametrizado)
+        ▼
+┌────────────────────────────────────────────────────────────────────┐
+│        PostgreSQL 16 (Docker, volumen persistente)                 │
+│        Esquema gobernado por prisma/schema.prisma                  │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Routing en el SPA React
+
+React Router v6 define el árbol de rutas en `App.jsx`. Las rutas privadas están envueltas en `<PrivateRoute role="...">`, que lee `useAuth()` y redirige a `/login` si no hay sesión o el rol no coincide.
+
+```
+/                          → público (HomePage)
+/login                     → público (LoginPage)
+/registro/candidato        → público
+/registro/empresa          → público
+/busqueda                  → público
+/vacante/:id               → público
+
+/candidato/*               → PrivateRoute(role="CANDIDATO")
+  /candidato/dashboard
+  /candidato/perfil
+  /candidato/busqueda
+  /candidato/alertas
+  /candidato/foros
+  /candidato/valoraciones
+
+/empresa/*                 → PrivateRoute(role="EMPRESA")
+  /empresa/dashboard
+  /empresa/vacantes
+  /empresa/vacantes/crear
+  /empresa/aplicaciones
+  /empresa/perfil
+
+/admin/*                   → PrivateRoute(role="SUPERADMIN")
+  /admin/dashboard
+  /admin/usuarios
+  /admin/empresas
+  /admin/vacantes
+  /admin/foros
+  /admin/recursos
+  /admin/valoraciones
+```
+
+### 3.3 Enrutamiento de transición en Express (`app.js`)
+
+Durante la migración, `app.js` sirve estáticos de ambos frontends. Los módulos ya compilados en React tienen prioridad; el resto recae en el HTML Vanilla:
+
+```js
+// Sirve el build de React para los módulos migrados
+app.use('/admin', express.static(path.join(__dirname, '../../frontend-react/dist')));
+// ... se añaden rutas a medida que se migran módulos
+
+// Fallback: HTML Vanilla para módulos aún no migrados
+app.use(express.static(path.join(__dirname, '../../frontend')));
+
+// Catch-all para el SPA React (client-side routing)
+app.get('/admin/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../frontend-react/dist/index.html'));
+});
+```
+
+Este bloque se actualiza con cada módulo que finaliza su migración.
+
+### 3.4 Cliente HTTP centralizado (`src/api/client.js`)
+
+```js
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
+
+async function request(path, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(body.error ?? res.statusText), { status: res.status });
   }
-  ```
+  return res.status === 204 ? null : res.json();
+}
 
-  ### 1.2 Principios de diseño
+export const api = {
+  get:    (path)         => request(path),
+  post:   (path, body)   => request(path, { method: 'POST',   body: JSON.stringify(body) }),
+  put:    (path, body)   => request(path, { method: 'PUT',    body: JSON.stringify(body) }),
+  patch:  (path, body)   => request(path, { method: 'PATCH',  body: JSON.stringify(body) }),
+  delete: (path)         => request(path, { method: 'DELETE' }),
+};
+```
 
-  1. **Pragmatismo sobre novedad.** No hay SSR, no hay hydration, no hay bundler. El HTML llega listo al navegador.
-  2. **Separación limpia de capas.** `routes → controllers → services → db`. Ningún controlador toca `pg` directamente.
-  3. **Stateless.** El servidor no guarda sesión: todo se valida en el JWT que viaja en `Authorization: Bearer`.
-  4. **Un solo origen de verdad para el esquema.** `prisma/schema.prisma`. El resto del código consume los enums como strings.
+### 3.5 AuthContext (`src/context/AuthContext.jsx`)
 
-  ---
+```jsx
+const AuthContext = createContext(null);
 
-  ## 2. Estructura de Directorios Real
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(() =>
+    JSON.parse(localStorage.getItem('user') ?? 'null')
+  );
 
-  ```
-  Portal/
-  ├── prisma/
-  │   ├── schema.prisma              # [CARLOS]  Modelos + enums (fuente de verdad)
-  │   └── seed.ts                    # [CARLOS]  Seed: usuarios + empresa + vacantes
-  │
-  ├── backend/
-  │   ├── Dockerfile
-  │   ├── package.json
-  │   └── src/
-  │       ├── server.js              # [CARLOS]  Arranque HTTP (lee PORT)
-  │       ├── app.js                 # [CARLOS]  Ensamblado Express: CORS, JSON, static, rutas, 404, error handler
-  │       │
-  │       ├── config/
-  │       │   └── env.js             # [CARLOS]  Lee y valida variables de entorno
-  │       │
-  │       ├── db/
-  │       │   └── db.js              # [CARLOS]  Pool `pg` compartido
-  │       │
-  │       ├── middleware/
-  │       │   ├── auth.middleware.js     # [BRIAN]  requireAuth, requireRole
-  │       │   └── validate.middleware.js # [CARLOS] Transforma errores de express-validator → 422
-  │       │
-  │       ├── routes/                # Una ruta por módulo; monta middleware y delega al controlador
-  │       │   ├── auth.routes.js         # [BRIAN]
-  │       │   ├── public.routes.js       # [CARLOS]
-  │       │   ├── vacantes.routes.js     # [WALTER]
-  │       │   ├── candidato.routes.js    # [WILBER]
-  │       │   ├── empresa.routes.js      # [WALTER]
-  │       │   └── admin.routes.js        # [CARLOS]
-  │       │
-  │       ├── controllers/           # Validación fina + serialización HTTP. Sin SQL.
-  │       │   ├── auth.controller.js     # [BRIAN]
-  │       │   ├── vacantes.controller.js # [WALTER]
-  │       │   ├── candidato.controller.js# [WILBER]
-  │       │   ├── empresa.controller.js  # [WALTER]
-  │       │   └── admin.controller.js    # [CARLOS]
-  │       │
-  │       ├── services/              # Lógica de negocio + SQL vía `pool.query(...)`
-  │       │   ├── auth.service.js        # [BRIAN]
-  │       │   ├── public.service.js      # [CARLOS]
-  │       │   ├── vacantes.service.js    # [WALTER]
-  │       │   ├── candidato.service.js   # [WILBER]
-  │       │   ├── empresa.service.js     # [WALTER]
-  │       │   └── admin.service.js       # [CARLOS]
-  │       │
-  │       └── tests/                 # Jest + Supertest (uno por módulo)
-  │           ├── setup.js
-  │           ├── helpers.js
-  │           ├── auth.test.js          # [BRIAN]
-  │           ├── vacantes.test.js      # [WALTER]
-  │           ├── candidato.test.js     # [WILBER]
-  │           ├── empresa.test.js       # [WALTER]
-  │           ├── admin.test.js         # [CARLOS]
-  │           └── public.test.js        # [CARLOS]
-  │
-  ├── frontend/                      # Estáticos servidos por Express (app.js)
-  │   ├── index.html                 # [CARLOS]  Landing
-  │   ├── busqueda.html              # [WILBER]  Búsqueda pública de vacantes
-  │   ├── vacante.html               # [WILBER]  Detalle de vacante
-  │   ├── css/
-  │   │   └── theme.css              # [CARLOS]  Tokens globales
-  │   ├── img/
-  │   ├── js/                        # Módulos ES (imports nativos)
-  │   │   ├── api.js                 # [CARLOS]  Cliente fetch + manejo del JWT
-  │   │   ├── auth.js                # [BRIAN]
-  │   │   ├── shell.js               # [CARLOS]  Header/footer inyectables
-  │   │   ├── icons.js               # [CARLOS]
-  │   │   ├── helpers.js             # [CARLOS]
-  │   │   ├── index.js               # [CARLOS]  Landing
-  │   │   ├── busqueda.js            # [WILBER]
-  │   │   ├── vacante.js             # [WILBER]
-  │   │   └── pages/                 # JS específico por página privada
-  │   └── pages/
-  │       ├── login.html                     # [BRIAN]
-  │       ├── registro.html                  # [BRIAN]
-  │       ├── registro-candidato.html        # [BRIAN]
-  │       ├── registro-empresa.html          # [BRIAN]
-  │       ├── registro-exitoso-empresa.html  # [BRIAN]
-  │       ├── candidato/
-  │       │   ├── dashboard.html     # [WILBER]
-  │       │   ├── busqueda.html      # [WILBER]
-  │       │   └── perfil.html        # [WILBER]
-  │       ├── empresa/
-  │       │   ├── dashboard.html     # [WALTER]
-  │       │   ├── vacantes.html      # [WALTER]
-  │       │   ├── crear-vacante.html # [WALTER]
-  │       │   └── perfil.html        # [WALTER]
-  │       └── admin/
-  │           ├── dashboard.html     # [CARLOS]
-  │           └── usuarios.html      # [CARLOS]
-  │
-  ├── docker-compose.yml             # [CARLOS]
-  ├── .env.example                   # [CARLOS]
-  ├── DEPLOY.md                      # [CARLOS]
-  └── ARCHITECTURE_SPEC.md           # [CARLOS]  (este archivo)
-  ```
+  const login = async (email, password, loginType) => {
+    const { token, user } = await api.post('/auth/login', { email, password, loginType });
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setUser(user);
+  };
 
-  ---
+  const logout = () => {
+    localStorage.clear();
+    setUser(null);
+  };
 
-  ## 3. Arquitectura Lógica
+  return (
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-  ```
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │                       Navegador (HTML Vanilla)                       │
-  │  pages/*.html  ──▶  js/api.js  ──▶  fetch("/api/...", Bearer JWT)    │
-  └──────────────────────────────────────────────────────────────────────┘
-                                │ HTTPS
-                                ▼
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │                        Express 5 (backend/src)                       │
-  │                                                                      │
-  │   app.js                                                             │
-  │    ├─ cors(), express.json()                                         │
-  │    ├─ express.static("frontend/")     ← sirve HTML/CSS/JS vanilla    │
-  │    ├─ /api/public     → public.routes  → public.service              │
-  │    ├─ /api/auth       → auth.routes    → auth.controller   → service │
-  │    ├─ /api/vacantes   → vacantes.*     (requireAuth + role EMPRESA)  │
-  │    ├─ /api/candidato  → candidato.*    (requireAuth + CANDIDATO)     │
-  │    ├─ /api/empresa    → empresa.*      (requireAuth + EMPRESA)       │
-  │    ├─ /api/admin      → admin.*        (requireAuth + SUPERADMIN)    │
-  │    ├─ 404 handler /api                                               │
-  │    └─ error handler global (statusCode → JSON uniforme)              │
-  │                                                                      │
-  │   middleware/auth.middleware.js                                      │
-  │    ├─ requireAuth:    jwt.verify(Bearer token, env.JWT_SECRET)       │
-  │    └─ requireRole:    chequea req.user.role contra whitelist         │
-  └──────────────────────────────────────────────────────────────────────┘
-                                │ pg.Pool (SQL parametrizado)
-                                ▼
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │           PostgreSQL 16 (Docker, volumen persistente)                │
-  │           Esquema definido y gobernado por prisma/schema.prisma      │
-  └──────────────────────────────────────────────────────────────────────┘
-  ```
+export const useAuth = () => useContext(AuthContext);
+```
 
-  ### 3.1 Flujo de una request autenticada
+### 3.6 Flujo de una request autenticada (React → API)
 
-  1. El navegador envía `Authorization: Bearer <jwt>` a `/api/<modulo>/...`.
-  2. Express enruta al `*.routes.js` correspondiente.
-  3. `requireAuth` valida firma/expiración del JWT y popula `req.user = { sub, role, email }`.
-  4. `requireRole('EMPRESA' | 'CANDIDATO' | 'SUPERADMIN')` aplica autorización por rol.
-  5. `express-validator` + middleware `validate` revisan el body/params/query.
-  6. El **controlador** extrae datos de `req`, delega al **service**, serializa la respuesta.
-  7. El **service** ejecuta `pool.query(SQL, [params])` y devuelve datos del dominio.
-  8. Cualquier `throw` sube al error handler global → respuesta JSON uniforme `{ error: "..." }`.
+1. El componente llama a un custom hook (ej. `useVacantes()`).
+2. El hook invoca `api.get('/vacantes')` en `client.js`.
+3. `client.js` lee `localStorage.getItem('token')` e inyecta el header `Authorization: Bearer <jwt>`.
+4. Express enruta a `vacantes.routes.js`.
+5. `requireAuth` valida firma/expiración del JWT y popula `req.user = { sub, role, email }`.
+6. `requireRole` aplica autorización por rol.
+7. El controlador delega al service, que ejecuta `pool.query(SQL, [params])`.
+8. Cualquier `throw` sube al error handler global → `{ error: "..." }` con el código HTTP correspondiente.
 
-  ---
+---
 
-  ## 4. Contratos de API (REST, prefijo `/api`)
+## 4. Estrategia de Migración — Patrón Strangler Fig
 
-  ### 4.1 Público (sin token)
+La migración es **incremental por módulo**. En ningún momento el sistema queda inoperativo. Cada módulo migrado pasa por: implementación React → integración en Express → validación manual → desactivación del HTML Vanilla equivalente.
 
-  | Método | Ruta | Descripción |
-  |---|---|---|
-  | `GET`  | `/api/public/stats`          | KPIs de la landing (usuarios, vacantes activas, empresas) |
-  | `GET`  | `/api/public/vacantes`       | Búsqueda pública (`q`, `ubicacion`, `page`, `limit`) |
-  | `GET`  | `/api/public/vacantes/:id`   | Detalle público de una vacante |
+### 4.1 Orden de ejecución
 
-  ### 4.2 Autenticación — `/api/auth` (owner: **Brian**)
+| Fase | Módulo | Owner | Justificación |
+|---|---|---|---|
+| **1** | Setup base (Vite, Tailwind, Router, AuthContext, `client.js`) | Carlos | Andamiaje compartido. Sin esto, ninguna fase puede avanzar. |
+| **2** | **Admin** | Carlos | Módulo de uso interno. Sirve como sandbox real para validar el stack antes de exponer a usuarios finales. Riesgo controlado. |
+| **3** | **Candidato** | Wilber | Mayor volumen de usuarios. Una vez Admin valida el patrón, Wilber aplica la misma estructura. |
+| **4** | **Empresa** | Walter | Dependencia leve con Candidato (comparten `VacanteCard`). Se migra después para reutilizar componentes. |
+| **5** | **Público** (Landing, Búsqueda, Vacante, Login, Registro) | Carlos + Brian | Última fase: mayor exposición. Se migra cuando el resto del sistema ya opera en React. |
 
-  | Método | Ruta | Body | Descripción |
-  |---|---|---|---|
-  | `POST` | `/api/auth/login`              | `email`, `password`, `loginType` (`candidato\|empresa\|admin`) | Retorna `{ token, user }` |
-  | `POST` | `/api/auth/registro/candidato` | `email`, `password`, `nombre`, `apellidos` | Crea `User` con rol `CANDIDATO` |
-  | `POST` | `/api/auth/registro/empresa`   | `email`, `password`, `nombre`, `empresaNombre`, `ubicacion`, `industria`, `descripcion?`, `sitioWeb?` | Crea `User` (rol `EMPRESA`) + `Company` asociada |
+### 4.2 Criterios para marcar un módulo como migrado
 
-  ### 4.3 Vacantes — `/api/vacantes` (owner: **Walter**)
+- Todas las rutas del módulo renderizan desde `frontend-react/dist/`.
+- El JWT se inyecta correctamente vía `client.js` en todas las llamadas del módulo.
+- Las vistas pasan validación manual contra el HTML Vanilla equivalente (paridad funcional).
+- Express retira el `express.static("frontend/")` correspondiente para esas rutas.
 
-  | Método | Ruta | Rol | Descripción |
-  |---|---|---|---|
-  | `GET`   | `/api/vacantes`                       | público  | Listar vacantes activas con filtros (`tipo_trabajo`, `tipo_contrato`, `experiencia`, `page`) |
-  | `GET`   | `/api/vacantes/:id`                   | público  | Detalle de una vacante |
-  | `GET`   | `/api/vacantes/empresa/mis-vacantes`  | EMPRESA  | Vacantes de la empresa del usuario autenticado |
-  | `POST`  | `/api/vacantes`                       | EMPRESA  | Crear vacante (`titulo`, `descripcion`, `requisitos`, `ubicacion`, `tipoTrabajo`, `tipoContrato`, `experiencia`, `contacto`, `salarioMin?`, `salarioMax?`) |
-  | `PUT`   | `/api/vacantes/:id`                   | EMPRESA  | Actualizar campos editables |
-  | `PATCH` | `/api/vacantes/:id/status`            | EMPRESA  | `status ∈ {activa, pausada, cerrada}` |
+### 4.3 Criterio de retiro del frontend legado
 
-  ### 4.4 Candidato — `/api/candidato` (owner: **Wilber**)
+La carpeta `frontend/` se elimina cuando **todos los módulos** han completado la migración y validación. Hasta entonces, el directorio permanece intacto y funcional.
 
-  | Método | Ruta | Descripción |
-  |---|---|---|
-  | `GET`  | `/api/candidato/perfil`                        | Perfil del candidato autenticado |
-  | `PUT`  | `/api/candidato/perfil`                        | Actualizar nombre, apellidos, teléfono, `cvUrl` |
-  | `POST` | `/api/candidato/postulaciones/:vacancyId`      | Postularse a una vacante (con `mensaje` opcional) |
-  | `GET`  | `/api/candidato/postulaciones`                 | Listar postulaciones propias |
+---
 
-  Todas las rutas están tras `requireAuth + requireRole('CANDIDATO')`.
+## 5. Contratos de API (REST, prefijo `/api`)
 
-  ### 4.5 Empresa — `/api/empresa` (owner: **Walter**)
+El backend no cambia. Esta sección se reproduce íntegra desde v2.0.0 como referencia para los desarrolladores React.
 
-  | Método | Ruta | Descripción |
-  |---|---|---|
-  | `GET`   | `/api/empresa/perfil`                                   | Perfil de la empresa del usuario |
-  | `PUT`   | `/api/empresa/perfil`                                   | Actualizar `nombre`, `descripcion`, `sitioWeb`, `ubicacion`, `industria` |
-  | `GET`   | `/api/empresa/vacantes`                                 | Vacantes propias |
-  | `GET`   | `/api/empresa/vacantes/:vacancyId/aplicaciones`         | Aplicantes por vacante |
-  | `PATCH` | `/api/empresa/aplicaciones/:applicationId/status`       | `status ∈ {nuevo, en_proceso, rechazado, contratado}` |
+### 5.1 Público (sin token)
 
-  Todas tras `requireAuth + requireRole('EMPRESA')`.
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/public/stats`        | KPIs de la landing (usuarios, vacantes activas, empresas) |
+| `GET` | `/api/public/vacantes`     | Búsqueda pública (`q`, `ubicacion`, `page`, `limit`) |
+| `GET` | `/api/public/vacantes/:id` | Detalle público de una vacante |
 
-  ### 4.6 Admin — `/api/admin` (owner: **Carlos**)
+### 5.2 Autenticación — `/api/auth` (owner: **Brian**)
 
-  | Método | Ruta | Descripción |
-  |---|---|---|
-  | `GET`   | `/api/admin/usuarios`                              | Listar usuarios |
-  | `PATCH` | `/api/admin/usuarios/:userId/toggle`               | Activar/desactivar usuario |
-  | `GET`   | `/api/admin/empresas/pendientes`                   | Empresas sin verificar |
-  | `PATCH` | `/api/admin/empresas/:companyId/verificar`         | `{ verificar: boolean }` |
-  | `GET`   | `/api/admin/vacantes/pendientes`                   | Vacantes sin aprobar |
-  | `PATCH` | `/api/admin/vacantes/:vacancyId/aprobar`           | `{ aprobar: boolean }` |
+| Método | Ruta | Body | Descripción |
+|---|---|---|---|
+| `POST` | `/api/auth/login`              | `email`, `password`, `loginType` | Retorna `{ token, user }` |
+| `POST` | `/api/auth/registro/candidato` | `email`, `password`, `nombre`, `apellidos` | Crea `User` con rol `CANDIDATO` |
+| `POST` | `/api/auth/registro/empresa`   | `email`, `password`, `nombre`, `empresaNombre`, `ubicacion`, `industria`, `descripcion?`, `sitioWeb?` | Crea `User` (rol `EMPRESA`) + `Company` |
 
-  Todas tras `requireAuth + requireRole('SUPERADMIN')`.
+### 5.3 Vacantes — `/api/vacantes` (owner: **Walter**)
 
-  ### 4.7 Formato uniforme de errores
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| `GET`   | `/api/vacantes`                      | público | Listar vacantes activas con filtros |
+| `GET`   | `/api/vacantes/:id`                  | público | Detalle de una vacante |
+| `GET`   | `/api/vacantes/empresa/mis-vacantes` | EMPRESA | Vacantes de la empresa autenticada |
+| `POST`  | `/api/vacantes`                      | EMPRESA | Crear vacante |
+| `PUT`   | `/api/vacantes/:id`                  | EMPRESA | Actualizar vacante |
+| `PATCH` | `/api/vacantes/:id/status`           | EMPRESA | `status ∈ {activa, pausada, cerrada}` |
 
-  Cualquier error en el pipeline termina en el handler global de `app.js`:
+### 5.4 Candidato — `/api/candidato` (owner: **Wilber**)
 
-  ```json
-  { "error": "Descripción humana del error" }
-  ```
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET`  | `/api/candidato/perfil`               | Perfil del candidato autenticado |
+| `PUT`  | `/api/candidato/perfil`               | Actualizar nombre, apellidos, teléfono, `cvUrl` |
+| `POST` | `/api/candidato/postulaciones/:id`    | Postularse a una vacante |
+| `GET`  | `/api/candidato/postulaciones`        | Listar postulaciones propias |
 
-  | Código | Caso típico |
-  |---|---|
-  | `400` | Body malformado |
-  | `401` | `Token requerido` / `Token inválido o expirado` |
-  | `403` | `Acceso denegado` (rol incorrecto) |
-  | `404` | `Ruta no encontrada` (bajo `/api`) |
-  | `422` | Validación de `express-validator` |
-  | `500` | Error interno (no se filtra el mensaje al cliente) |
+### 5.5 Empresa — `/api/empresa` (owner: **Walter**)
 
-  ---
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET`   | `/api/empresa/perfil`                              | Perfil de la empresa |
+| `PUT`   | `/api/empresa/perfil`                              | Actualizar datos de empresa |
+| `GET`   | `/api/empresa/vacantes`                            | Vacantes propias |
+| `GET`   | `/api/empresa/vacantes/:id/aplicaciones`           | Aplicantes por vacante |
+| `PATCH` | `/api/empresa/aplicaciones/:id/status`             | `status ∈ {nuevo, en_proceso, rechazado, contratado}` |
 
-  ## 5. División de Trabajo (4 Agentes)
+### 5.6 Admin — `/api/admin` (owner: **Carlos**)
 
-  Cada agente es **dueño** de un módulo vertical: rutas, controlador, servicio, tests y HTML/JS correspondientes. Los cambios fuera del módulo propio requieren PR con revisión del owner.
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET`   | `/api/admin/usuarios`                    | Listar usuarios |
+| `PATCH` | `/api/admin/usuarios/:id/toggle`         | Activar/desactivar usuario |
+| `GET`   | `/api/admin/empresas/pendientes`         | Empresas sin verificar |
+| `PATCH` | `/api/admin/empresas/:id/verificar`      | `{ verificar: boolean }` |
+| `GET`   | `/api/admin/vacantes/pendientes`         | Vacantes sin aprobar |
+| `PATCH` | `/api/admin/vacantes/:id/aprobar`        | `{ aprobar: boolean }` |
 
-  ### Brian — **Autenticación y Sesiones**
-  - **Backend:** `routes/auth.routes.js`, `controllers/auth.controller.js`, `services/auth.service.js`, `middleware/auth.middleware.js`
-  - **Frontend:** `pages/login.html`, `pages/registro*.html`, `js/auth.js`
-  - **Tests:** `tests/auth.test.js`
-  - **Responsable de:** hashing con bcrypt, emisión de JWT, middleware `requireAuth`/`requireRole`, formularios de login/registro, almacenamiento del token en el cliente.
+### 5.7 Formato uniforme de errores
 
-  ### Wilber — **Módulo Candidato**
-  - **Backend:** `routes/candidato.routes.js`, `controllers/candidato.controller.js`, `services/candidato.service.js`
-  - **Frontend:** `busqueda.html`, `vacante.html`, `pages/candidato/*`, `js/busqueda.js`, `js/vacante.js`
-  - **Tests:** `tests/candidato.test.js`
-  - **Responsable de:** perfil del candidato, búsqueda de vacantes, flujo de postulación, CV (`cvUrl`), listado de postulaciones propias.
+```json
+{ "error": "Descripción humana del error" }
+```
 
-  ### Walter — **Módulo Empresa y Vacantes**
-  - **Backend:** `routes/empresa.routes.js` + `routes/vacantes.routes.js`, controladores y servicios asociados
-  - **Frontend:** `pages/empresa/*` (dashboard, vacantes, crear-vacante, perfil)
-  - **Tests:** `tests/empresa.test.js`, `tests/vacantes.test.js`
-  - **Responsable de:** CRUD de vacantes, revisión de aplicantes, cambio de status de aplicación y de vacante, perfil de empresa.
+| Código | Caso típico |
+|---|---|
+| `400` | Body malformado |
+| `401` | Token requerido / Token inválido o expirado |
+| `403` | Acceso denegado (rol incorrecto) |
+| `404` | Ruta no encontrada (bajo `/api`) |
+| `422` | Validación de `express-validator` |
+| `500` | Error interno |
 
-  ### Carlos — **Admin + Plataforma (shared)**
-  - **Backend:** `routes/admin.routes.js`, controlador y servicio admin, `routes/public.routes.js`, `services/public.service.js`, `app.js`, `server.js`, `config/env.js`, `db/db.js`, `middleware/validate.middleware.js`
-  - **Infra:** `prisma/schema.prisma`, `prisma/seed.ts`, `docker-compose.yml`, `.env.example`, `DEPLOY.md`, `ARCHITECTURE_SPEC.md`
-  - **Frontend:** `index.html`, `js/api.js`, `js/shell.js`, `js/icons.js`, `js/helpers.js`, `css/theme.css`, `pages/admin/*`
-  - **Tests:** `tests/admin.test.js`, `tests/public.test.js`
-  - **Responsable de:** aprobación de vacantes/empresas, gestión de usuarios, landing pública, cliente HTTP compartido, tema visual, seed de datos, esquema y arranque de la plataforma.
+---
 
-  ### 5.1 Matriz de propiedad — resumen
+## 6. División de Trabajo (Ownership v3.0.0)
 
-  | Carpeta / archivo | Owner |
-  |---|---|
-  | `backend/src/app.js`, `server.js`, `config/`, `db/`, `middleware/validate.*` | Carlos |
-  | `backend/src/middleware/auth.middleware.js` | Brian |
-  | `backend/src/{routes,controllers,services}/auth.*` | Brian |
-  | `backend/src/{routes,controllers,services}/candidato.*` | Wilber |
-  | `backend/src/{routes,controllers,services}/{empresa,vacantes}.*` | Walter |
-  | `backend/src/{routes,controllers,services}/{admin,public}.*` | Carlos |
-  | `prisma/`, `docker-compose.yml`, `.env.example`, docs raíz | Carlos |
-  | `frontend/pages/candidato/*`, `busqueda.*`, `vacante.*` | Wilber |
-  | `frontend/pages/empresa/*` | Walter |
-  | `frontend/pages/admin/*` | Carlos |
-  | `frontend/pages/login*.html`, `registro*.html`, `js/auth.js` | Brian |
-  | `frontend/{index.html, css/, js/{api,shell,icons,helpers,index}.js}` | Carlos |
+Cada integrante es dueño de su módulo **de extremo a extremo**: HTML Vanilla de referencia → componentes React → custom hooks → validación manual. Los cambios fuera del módulo propio requieren PR con revisión del owner.
 
-  ---
+### Brian — Autenticación y Sesiones
 
-  ## 6. Entornos y Variables
+- **Backend (sin cambios):** `auth.routes.js`, `auth.controller.js`, `auth.service.js`, `auth.middleware.js`
+- **React (nuevo):** `context/AuthContext.jsx`, `pages/public/LoginPage.jsx`, `pages/public/RegistroCandidatoPage.jsx`, `pages/public/RegistroEmpresaPage.jsx`
+- **Tests backend:** `tests/auth.test.js`
+- **Responsable de:** `useAuth()` hook, lógica de login/logout, almacenamiento del JWT en `localStorage`, formularios de acceso y registro.
 
-  Regla única: **cada proceso lee la URL del entorno en el que corre. Nada se hardcodea.**
+### Wilber — Módulo Candidato
 
-  | Variable | Valor en host (`.env`) | Valor en contenedor `api` (docker-compose) |
-  |---|---|---|
-  | `DATABASE_URL` | `postgresql://portal:portal_secret@localhost:5434/portal_db` | `postgresql://portal:portal_secret@db:5432/portal_db` |
-  | `JWT_SECRET` | definido en `.env` | definido en `environment:` |
-  | `PORT` | `3000` | `3000` |
-  | `NODE_ENV` | `development` | `development` |
+- **Backend (sin cambios):** `candidato.routes.js`, `candidato.controller.js`, `candidato.service.js`
+- **React (nuevo):** `pages/candidato/*`, `hooks/useCandidato.js`, `components/shared/ForoPost.jsx`, `components/shared/AlertaBanner.jsx`
+- **Tests backend:** `tests/candidato.test.js`
+- **Responsable de:** perfil del candidato, búsqueda de vacantes, flujo de postulación, alertas, foros (vista candidato), valoraciones.
 
-  - **Prisma CLI** (`db push`, `db seed`) se ejecuta siempre **desde el host** contra `localhost:5434`.
-  - El **backend** puede correr en host (`npm run dev` con `.env`) o en contenedor (`docker compose up api`, que ignora `.env` y usa `environment:`).
+### Walter — Módulo Empresa y Vacantes
 
-  Consulta `DEPLOY.md` para el procedimiento completo de bootstrap.
+- **Backend (sin cambios):** `empresa.routes.js`, `vacantes.routes.js`, controladores y servicios asociados
+- **React (nuevo):** `pages/empresa/*`, `hooks/useEmpresa.js`, `hooks/useVacantes.js`, `components/shared/VacanteCard.jsx`
+- **Tests backend:** `tests/empresa.test.js`, `tests/vacantes.test.js`
+- **Responsable de:** CRUD de vacantes, revisión de aplicantes, cambio de estado de aplicación y vacante, perfil de empresa.
 
-  ---
+### Carlos — Admin + Plataforma + Setup React
 
-  ## 7. Decisiones arquitectónicas clave (ADR resumido)
+- **Backend (sin cambios):** `app.js`, `server.js`, `config/`, `db/`, `middleware/validate.*`, `admin.routes.js`, `public.routes.js`, servicios correspondientes
+- **Infra:** `prisma/`, `docker-compose.yml`, `.env.example`, `DEPLOY.md`, `ARCHITECTURE_SPEC.md`
+- **React (nuevo):** Setup base completo (`vite.config.js`, `tailwind.config.js`, `App.jsx`, `src/api/client.js`, `components/ui/*`, `components/layout/*`), `pages/admin/*`, `pages/public/HomePage.jsx`, `pages/public/BusquedaPage.jsx`, `pages/public/VacantePage.jsx`, `hooks/useAdmin.js`
+- **Tests backend:** `tests/admin.test.js`, `tests/public.test.js`
+- **Responsable de:** andamiaje React compartido, enrutamiento Express de transición, aprobación de vacantes/empresas, gestión de usuarios, tokens visuales Tailwind.
 
-  | # | Decisión | Alternativa descartada | Motivo |
-  |---|---|---|---|
-  | ADR-01 | Express 5 + HTML vanilla | Next.js 14 (v1.0.0) | Reducir complejidad: sin bundler, sin SSR, cero hydration. Landing y páginas se entregan como HTML estático. |
-  | ADR-02 | JWT manual | NextAuth.js | Stateless, portable, sin acoplamiento a frontend React. Control total sobre claims y expiración. |
-  | ADR-03 | `pg` en runtime, Prisma solo para schema | Prisma Client en runtime | SQL explícito para reportes/agregaciones del admin. Evita sorpresas del query planner y reduce dependencias en el contenedor API. |
-  | ADR-04 | Estructura por módulo (routes/controllers/services) | Colocalización tipo "feature folders" | Ownership claro por agente. Cada archivo tiene un dueño identificable. |
-  | ADR-05 | `express-validator` en las rutas | Zod | Validación declarativa junto al endpoint, sin schemas compartidos con frontend (innecesarios aquí). |
-  | ADR-06 | Split de `DATABASE_URL` entre `.env` y `docker-compose.environment` | `.env` único | Permite alternar entre backend en host y backend en contenedor sin tocar código. |
+### 6.1 Matriz de propiedad — resumen
 
-  ---
+| Carpeta / archivo | Owner |
+|---|---|
+| `backend/src/app.js`, `server.js`, `config/`, `db/`, `middleware/validate.*` | Carlos |
+| `backend/src/middleware/auth.middleware.js` | Brian |
+| `backend/src/{routes,controllers,services}/auth.*` | Brian |
+| `backend/src/{routes,controllers,services}/candidato.*` | Wilber |
+| `backend/src/{routes,controllers,services}/{empresa,vacantes}.*` | Walter |
+| `backend/src/{routes,controllers,services}/{admin,public}.*` | Carlos |
+| `prisma/`, `docker-compose.yml`, `.env.example`, docs raíz | Carlos |
+| `frontend-react/vite.config.js`, `tailwind.config.js`, `src/api/`, `src/components/ui/`, `src/components/layout/`, `src/App.jsx` | Carlos |
+| `frontend-react/src/context/AuthContext.jsx` | Brian |
+| `frontend-react/src/pages/public/Login*.jsx`, `Registro*.jsx` | Brian |
+| `frontend-react/src/pages/public/Home*.jsx`, `Busqueda*.jsx`, `Vacante*.jsx` | Carlos |
+| `frontend-react/src/pages/candidato/*`, `hooks/useCandidato.js` | Wilber |
+| `frontend-react/src/pages/empresa/*`, `hooks/useEmpresa.js`, `hooks/useVacantes.js` | Walter |
+| `frontend-react/src/pages/admin/*`, `hooks/useAdmin.js` | Carlos |
+| `frontend/` (legado) | Cada owner en su subcarpeta, sin nuevas funcionalidades |
 
-  ## 8. Convenciones de código
+---
 
-  - **Lenguaje:** JavaScript ES Modules (`"type": "module"` en `backend/package.json`). Todos los imports con extensión `.js`.
-  - **Naming:** `modulo.routes.js`, `modulo.controller.js`, `modulo.service.js` — sin excepciones.
-  - **SQL:** siempre parametrizado (`$1, $2, ...`), nunca interpolado. Enums en minúsculas alineados con `schema.prisma`.
-  - **Respuestas HTTP:** JSON. Nunca enviar HTML desde rutas `/api`.
-  - **Async:** `async/await` en controladores. Los `throw` suben al error handler global; no se hace `try/catch` local salvo para transformar un error.
-  - **Tests:** Jest + Supertest, uno por módulo. Base de datos de test limpia entre `describe` (ver `tests/setup.js`).
+## 7. Entornos y Variables
 
-  ---
+| Variable | Backend en host (`.env`) | Backend en contenedor (`docker-compose`) | Frontend React (`.env`) |
+|---|---|---|---|
+| `DATABASE_URL` | `postgresql://portal:portal_secret@localhost:5434/portal_db` | `postgresql://portal:portal_secret@db:5432/portal_db` | — |
+| `JWT_SECRET` | definido en `.env` | definido en `environment:` | — |
+| `PORT` | `3000` | `3000` | — |
+| `NODE_ENV` | `development` | `development` | — |
+| `VITE_API_URL` | — | — | `/api` (o URL completa en producción) |
 
-  ## 9. Roadmap técnico (fuera del alcance v2.0.0)
+- **Prisma CLI** se ejecuta siempre **desde el host** contra `localhost:5434`.
+- El build de React se genera con `npm run build` en `frontend-react/` y Express sirve `dist/` como estático.
+- En desarrollo, Vite corre en su propio puerto (`5173`) con proxy configurado hacia el backend (`localhost:3000`).
 
-  1. Mover el hashing de contraseñas a `argon2id` cuando `bcryptjs` quede obsoleto.
-  2. Añadir índices a `vacancies(status, is_approved, created_at)` cuando el volumen lo justifique.
-  3. Integrar un CDN para los estáticos de `frontend/` (hoy los sirve Express).
-  4. Introducir rate-limit (`express-rate-limit`) en `/api/auth/login`.
-  5. Reemplazar `pg.Pool` plano por `pg` + `PgBouncer` si escala la concurrencia.
+Consulta `DEPLOY.md` para el procedimiento completo de bootstrap.
+
+---
+
+## 8. Decisiones arquitectónicas clave (ADR resumido)
+
+| # | Decisión | Alternativa descartada | Motivo |
+|---|---|---|---|
+| ADR-01 | Express 5 + HTML Vanilla (v2.0.0) | Next.js 14 | Reducir complejidad: sin bundler, sin SSR. Decisión anterior que se mantiene para el backend. |
+| ADR-02 | JWT manual | NextAuth.js | Stateless, portable, sin acoplamiento a frontend. Control total sobre claims y expiración. |
+| ADR-03 | `pg` en runtime, Prisma solo para schema | Prisma Client en runtime | SQL explícito para reportes/agregaciones. Evita sorpresas del query planner. |
+| ADR-04 | Estructura por módulo (routes/controllers/services) | Feature folders | Ownership claro por integrante. |
+| ADR-05 | React Context para estado global | Redux Toolkit / Zustand | Alcance del sistema no justifica dependencias externas de estado. |
+| ADR-06 | Strangler Fig incremental | Rewrite total | Garantiza que el sistema permanece funcional durante toda la migración. |
+| ADR-07 | Tailwind consuma variables CSS de `theme.css` | Redefinir colores en Tailwind | Paridad visual garantizada durante la coexistencia de ambos frontends. Sin riesgo de drift de color. |
+| ADR-08 | Admin se migra primero | Módulo público primero | Admin es de uso interno, permite validar el stack en producción con riesgo controlado antes de exponer cambios a usuarios finales. |
+
+---
+
+## 9. Convenciones de código
+
+### Backend (sin cambios)
+- ES Modules (`"type": "module"`). Todos los imports con extensión `.js`.
+- Naming: `modulo.routes.js`, `modulo.controller.js`, `modulo.service.js`.
+- SQL siempre parametrizado (`$1, $2, ...`), nunca interpolado.
+- `async/await` en controladores. `throw` sube al error handler global.
+
+### Frontend React (nuevo)
+- **Componentes:** PascalCase, un componente por archivo, extensión `.jsx`.
+- **Hooks:** prefijo `use`, camelCase, extensión `.js` (ej. `useCandidato.js`).
+- **Páginas:** sufijo `Page` (ej. `DashboardPage.jsx`).
+- **API:** todo acceso al backend va por `src/api/client.js`. Prohibido usar `fetch` directamente en componentes.
+- **Estado local:** `useState`/`useReducer`. Estado global solo vía `AuthContext`.
+- **Estilos:** clases Tailwind. Los colores se referencian por su alias (`bg-primary`, `text-danger`), nunca con valores hexadecimales directos.
+
+---
+
+## 10. Roadmap técnico
+
+### Pendiente en v3.0.0 (migración React)
+1. Completar las fases de migración definidas en §4 en el orden declarado.
+2. Retirar la carpeta `frontend/` al finalizar la última fase.
+3. Actualizar `DEPLOY.md` con el proceso de build React y servicio de estáticos.
+
+### Post-migración (fuera del alcance v3.0.0)
+1. Mover el hashing de contraseñas a `argon2id` cuando `bcryptjs` quede obsoleto.
+2. Añadir índices a `vacancies(status, is_approved, created_at)` cuando el volumen lo justifique.
+3. Introducir rate-limit (`express-rate-limit`) en `/api/auth/login`.
+4. Integrar CDN para los estáticos del build de Vite en producción.
+5. Evaluar `PgBouncer` si escala la concurrencia sobre `pg.Pool`.

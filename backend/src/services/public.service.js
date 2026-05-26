@@ -4,7 +4,7 @@ import { pool } from '../db/db.js';
 const makeError = (msg, code) => { const e = new Error(msg); e.statusCode = code; return e; };
 
 export const buscarVacantes = async ({ q, ubicacion, tipoTrabajo, tipoContrato, experiencia, salarioMin, salarioMax, page = 1, limit = 20 } = {}) => {
-  const conditions = [`v.status = 'activa'`, `v.is_approved = true`];
+  const conditions = [`v.status = 'activa'`, `c.is_verified = true`];
   const params = [];
 
   if (q) {
@@ -65,7 +65,7 @@ export const detalleVacante = async (id) => {
             c.is_verified  AS empresa_verificada
      FROM vacancies v
      JOIN companies c ON c.id = v.company_id
-     WHERE v.id = $1 AND v.status = 'activa' AND v.is_approved = true`,
+     WHERE v.id = $1 AND v.status = 'activa' AND c.is_verified = true`,
     [id]
   );
   if (!rows[0]) throw makeError('Vacante no encontrada', 404);
@@ -74,7 +74,7 @@ export const detalleVacante = async (id) => {
 
 export const getLandingStats = async () => {
   const [vacantes, empresas, usuarios, solicitudes, recientes, industrias] = await Promise.all([
-    pool.query(`SELECT COUNT(*)::int AS total FROM vacancies WHERE status = 'activa' AND is_approved = true`),
+    pool.query(`SELECT COUNT(*)::int AS total FROM vacancies v JOIN companies c ON c.id = v.company_id WHERE v.status = 'activa' AND c.is_verified = true`),
     pool.query(`SELECT COUNT(*)::int AS total FROM companies`),
     pool.query(`SELECT COUNT(*)::int AS total FROM users WHERE role = 'CANDIDATO'`),
     pool.query(`SELECT COUNT(*)::int AS total FROM applications`),
@@ -84,8 +84,8 @@ export const getLandingStats = async () => {
               c.nombre AS empresa_nombre, c.logo_url AS empresa_logo
        FROM vacancies v
        JOIN companies c ON c.id = v.company_id
-       WHERE v.status = 'activa' AND v.is_approved = true
-       ORDER BY v.created_at DESC LIMIT 6`
+       WHERE v.status = 'activa' AND c.is_verified = true
+       ORDER BY v.created_at DESC`
     ),
     pool.query(
       `SELECT industria, COUNT(*)::int AS total FROM companies GROUP BY industria ORDER BY total DESC LIMIT 4`
@@ -108,7 +108,7 @@ export const getRecursos = async (tipo) => {
   let where = `is_published = true`;
   if (tipo) { params.push(tipo); where += ` AND tipo = $${params.length}::"ResourceType"`; }
   const { rows } = await pool.query(
-    `SELECT id, titulo, contenido, tipo, imagen_url, created_at
+    `SELECT id, titulo, contenido, url, tipo, imagen_url, created_at
      FROM resources WHERE ${where} ORDER BY created_at DESC`,
     params
   );

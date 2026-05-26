@@ -1,19 +1,22 @@
-import * as authService from '../services/auth.service.js';
+import * as svc from '../services/auth.service.js';
 
-export const login = async (req, res, next) => {
+export async function login(req, res, next) {
   try {
-    res.json(await authService.login(req.body));
+    const result = await svc.login(req.body);
+    res.json({ data: result });
   } catch (err) { next(err); }
-};
+}
 
-export const registrarCandidato = async (req, res, next) => {
+export async function registrarCandidato(req, res, next) {
   try {
-    res.status(201).json(await authService.registrarCandidato(req.body));
+    const result = await svc.registrarCandidato(req.body);
+    res.status(201).json({ data: result });
   } catch (err) { next(err); }
-};
+}
 
-export const registrarEmpresa = async (req, res, next) => {
+export async function registrarEmpresa(req, res, next) {
   try {
-    res.status(201).json(await authService.registrarEmpresa(req.body));
+    const result = await svc.registrarEmpresa(req.body);
+    res.status(201).json({ data: result });
   } catch (err) { next(err); }
-};
+}

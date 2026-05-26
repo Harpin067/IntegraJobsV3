@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import {
   PrismaClient,
   Role,
@@ -37,7 +38,7 @@ async function main() {
         nombre: u.nombre,
         passwordHash: hash,
         role: u.role,
-        empresaNombre: u.empresaNombre ?? null,
+       // empresaNombre: u.empresaNombre ?? null,
       },
     });
     console.log(`✓  ${u.role.padEnd(12)} → ${u.email}`);

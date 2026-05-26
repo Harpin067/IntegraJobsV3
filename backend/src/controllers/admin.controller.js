@@ -26,16 +26,6 @@ export const verificarEmpresa = async (req, res, next) => {
   catch (err) { next(err); }
 };
 
-export const vacantesPendientes = async (req, res, next) => {
-  try { res.json(await svc.vacantesPendientes()); }
-  catch (err) { next(err); }
-};
-
-export const aprobarVacante = async (req, res, next) => {
-  try { res.json(await svc.aprobarVacante(req.params.vacancyId, req.body.aprobar)); }
-  catch (err) { next(err); }
-};
-
 export const listarValoraciones = async (req, res, next) => {
   try { res.json(await svc.listarValoraciones()); }
   catch (err) { next(err); }
@@ -88,6 +78,11 @@ export const listarRecursos = async (req, res, next) => {
 
 export const crearRecurso = async (req, res, next) => {
   try { res.status(201).json(await svc.crearRecurso(req.body)); }
+  catch (err) { next(err); }
+};
+
+export const actualizarRecurso = async (req, res, next) => {
+  try { res.json(await svc.actualizarRecurso(req.params.resourceId, req.body)); }
   catch (err) { next(err); }
 };
 

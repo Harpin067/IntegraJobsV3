@@ -98,7 +98,7 @@ export const actualizarVacanteEmpresaRules = [
 ];
 
 export const updateStatusAplicacionRules = [
-  param('id').isUUID().withMessage('ID de aplicación inválido'),
+  param('applicationId').isUUID().withMessage('ID de aplicación inválido'),
   body('status')
     .isIn(['nuevo', 'en_proceso', 'rechazado', 'contratado'])
     .withMessage('Estado de aplicación inválido'),

@@ -5,12 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-import authRoutes      from './routes/auth.routes.js';
-import vacantesRoutes  from './routes/vacantes.routes.js';
-import candidatoRoutes from './routes/candidato.routes.js';
-import empresaRoutes   from './routes/empresa.routes.js';
-import adminRoutes     from './routes/admin.routes.js';
-import publicRoutes    from './routes/public.routes.js';
+import apiRouter             from './routes/index.js';
 import { notFound, errorHandler } from './middlewares/error.middleware.js';
 import { requireAuth } from './middleware/auth.middleware.js';
 import { env } from './config/env.js';
@@ -21,7 +16,12 @@ const __dirname  = path.dirname(__filename);
 const ALLOWED_ORIGINS =
   env.NODE_ENV === 'production'
     ? (env.ALLOWED_ORIGINS ?? '').split(',').map(o => o.trim()).filter(Boolean)
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+    : [
+        'http://localhost:3000', 
+        'http://127.0.0.1:3000', 
+        'http://localhost:5173', 
+        'http://127.0.0.1:5173'
+      ];
 
 export function createApp() {
   const app = express();
@@ -38,9 +38,9 @@ export function createApp() {
 
   app.use(express.json());
 
-  // 1. Frontend estático
-  const frontendPath = path.resolve(__dirname, '../../frontend');
-  app.use(express.static(frontendPath));
+  // 1. Frontend estático (build de Vite)
+  const frontendDist = path.resolve(__dirname, '../../frontend-react/dist');
+  app.use(express.static(frontendDist));
 
   // 2. Archivos públicos: logos de empresas solamente
   const logosPath = path.resolve(__dirname, '../uploads/logos');
@@ -81,20 +81,16 @@ export function createApp() {
     res.sendFile(filePath);
   });
 
-  // 5. Rutas de la API
-  app.use('/api/public',    publicRoutes);
-  app.use('/api/auth',      authRoutes);
-  app.use('/api/vacantes',  vacantesRoutes);
-  app.use('/api/candidato', candidatoRoutes);
-  app.use('/api/empresa',   empresaRoutes);
-  app.use('/api/admin',     adminRoutes);
+  // 5. Rutas de la API — enrutador maestro
+  app.use('/api', apiRouter);
 
   // 6. 404 exclusivo para /api
   app.use('/api', notFound);
 
-  // 7. 404 para estáticos del frontend
-  app.use((_req, res) => {
-    res.status(404).send('<h2>Error 404 - Archivo no encontrado</h2>');
+  // 7. SPA fallback: cualquier GET que no sea /api ni un archivo estático
+  //    devuelve index.html para que react-router-dom maneje la ruta en cliente.
+  app.get(/.*/, (_req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
   });
 
   // 8. Manejador global de errores

@@ -1,8 +1,7 @@
 // backend/src/routes/public.routes.js
 import { Router } from 'express';
+import { getStats, getVacantes } from '../controllers/public.controller.js';
 import {
-  getLandingStats,
-  buscarVacantes,
   detalleVacante,
   getRecursos,
   getForoCategories,
@@ -14,17 +13,10 @@ import {
 const router = Router();
 
 // ── Stats landing ─────────────────────────────────────────────────────
-router.get('/stats', async (_req, res, next) => {
-  try { res.json(await getLandingStats()); } catch (err) { next(err); }
-});
+router.get('/stats', getStats);
 
 // ── Vacantes públicas ─────────────────────────────────────────────────
-router.get('/vacantes', async (req, res, next) => {
-  try {
-    const { q, ubicacion, tipoTrabajo, tipoContrato, experiencia, salarioMin, salarioMax, page, limit } = req.query;
-    res.json(await buscarVacantes({ q, ubicacion, tipoTrabajo, tipoContrato, experiencia, salarioMin, salarioMax, page, limit }));
-  } catch (err) { next(err); }
-});
+router.get('/vacantes', getVacantes);
 
 router.get('/vacantes/:id', async (req, res, next) => {
   try { res.json(await detalleVacante(req.params.id)); } catch (err) { next(err); }

@@ -69,30 +69,6 @@ export const verificarEmpresa = async (companyId, verificar) => {
   return rows[0];
 };
 
-// ── Vacantes ──────────────────────────────────────────────
-export const vacantesPendientes = async () => {
-  const { rows } = await pool.query(
-    `SELECT v.*, c.nombre AS empresa_nombre, c.logo_url AS empresa_logo
-     FROM vacancies v
-     JOIN companies c ON c.id = v.company_id
-     WHERE v.is_approved = false AND v.status NOT IN ('cerrada','rechazada')
-     ORDER BY v.created_at ASC`
-  );
-  return rows;
-};
-
-export const aprobarVacante = async (vacancyId, aprobar) => {
-  const status = aprobar ? 'activa' : 'rechazada';
-  const { rows } = await pool.query(
-    `UPDATE vacancies
-     SET is_approved = $1, status = $2::"VacancyStatus", updated_at = NOW()
-     WHERE id = $3 RETURNING *`,
-    [aprobar, status, vacancyId]
-  );
-  if (!rows[0]) throw makeError('Vacante no encontrada', 404);
-  return rows[0];
-};
-
 // ── Valoraciones ──────────────────────────────────────────
 export const listarValoraciones = async () => {
   const { rows } = await pool.query(
@@ -208,20 +184,33 @@ export const getChartStats = async () => {
 // ── Recursos ───────────────────────────────────────────────
 export const listarRecursos = async () => {
   const { rows } = await pool.query(
-    `SELECT id, titulo, contenido, tipo, imagen_url, is_published, created_at
+    `SELECT id, titulo, contenido, url, tipo, imagen_url, is_published, created_at
      FROM resources
      ORDER BY created_at DESC`
   );
   return rows;
 };
 
-export const crearRecurso = async ({ titulo, contenido, tipo, imagenUrl, isPublished }) => {
+export const crearRecurso = async ({ titulo, contenido, url, tipo, imagenUrl, isPublished }) => {
   const { rows } = await pool.query(
-    `INSERT INTO resources (id, titulo, contenido, tipo, imagen_url, is_published, created_at, updated_at)
-     VALUES (gen_random_uuid(), $1, $2, $3::"ResourceType", $4, $5, NOW(), NOW())
+    `INSERT INTO resources (id, titulo, contenido, url, tipo, imagen_url, is_published, created_at, updated_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4::"ResourceType", $5, $6, NOW(), NOW())
      RETURNING *`,
-    [titulo, contenido, tipo, imagenUrl ?? null, isPublished ?? false]
+    [titulo, contenido, url ?? null, tipo, imagenUrl ?? null, isPublished ?? false]
   );
+  return rows[0];
+};
+
+export const actualizarRecurso = async (resourceId, { titulo, contenido, url, tipo, imagenUrl, isPublished }) => {
+  const { rows } = await pool.query(
+    `UPDATE resources
+     SET titulo = $1, contenido = $2, url = $3, tipo = $4::"ResourceType",
+         imagen_url = $5, is_published = $6, updated_at = NOW()
+     WHERE id = $7
+     RETURNING *`,
+    [titulo, contenido, url ?? null, tipo, imagenUrl ?? null, isPublished ?? false, resourceId]
+  );
+  if (!rows[0]) throw makeError('Recurso no encontrado', 404);
   return rows[0];
 };
 
