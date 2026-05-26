@@ -64,7 +64,7 @@ export async function crear(req, res, next) {
         salarioMin:  salarioMin  != null ? Number(salarioMin)  : null,
         salarioMax:  salarioMax  != null ? Number(salarioMax)  : null,
         status:      'activa',
-        isApproved:  false,
+        isApproved:  true,
       },
     });
 

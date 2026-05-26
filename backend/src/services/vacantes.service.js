@@ -57,8 +57,10 @@ export const crear = async (companyId, data) => {
   const { rows } = await pool.query(
     `INSERT INTO vacancies
        (id, company_id, titulo, descripcion, requisitos, ubicacion,
-        tipo_trabajo, tipo_contrato, experiencia, contacto, salario_min, salario_max, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::"TipoTrabajo", $8::"TipoContrato", $9::"Experiencia", $10, $11, $12, NOW())
+        tipo_trabajo, tipo_contrato, experiencia, contacto, salario_min, salario_max,
+        status, is_approved, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::"TipoTrabajo", $8::"TipoContrato", $9::"Experiencia", $10, $11, $12,
+             'activa', true, NOW())
      RETURNING *`,
     [
       nuevoId, 

@@ -116,9 +116,11 @@ export const empresaService = {
                 contacto,
                 salario_min,
                 salario_max,
+                status,
+                is_approved,
                 updated_at
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7::"TipoTrabajo",$8::"TipoContrato",$9::"Experiencia",$10,$11,$12,NOW())
+            VALUES ($1,$2,$3,$4,$5,$6,$7::"TipoTrabajo",$8::"TipoContrato",$9::"Experiencia",$10,$11,$12,'activa',true,NOW())
             RETURNING *
         `;
 
