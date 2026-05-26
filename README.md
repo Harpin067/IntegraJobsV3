@@ -56,3 +56,4 @@ Bash
 
 Nota para el equipo de desarrollo: El archivo .env ya se encuentra incluido en este repositorio y el docker-compose.yml está preconfigurado para el entorno de desarrollo (NODE_ENV=development). No es necesario que configures credenciales ni variables de conexión manualmente para empezar a programar.
 # IntegraJobsV3
+# IntegraJobsV3
